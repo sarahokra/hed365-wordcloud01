@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Word cloud (instructor)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:#EEF2F4; --ink:#12222B; --slate:#4F606B; --hair:#C9D3D9; --card:#FFFFFF; --accent:#0F766E; --accent-ink:#FFFFFF; --stage:#FFFFFF;
+  --f-display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
+  --f-body:'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{--page:#0E1820; --ink:#E8EEF2; --slate:#A2B2BD; --hair:#2A3B45; --card:#16252F; --accent:#2DB3A5; --accent-ink:#06201D; --stage:#12212B}
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--page);color:var(--ink);font:400 16px/1.45 var(--f-body)}
+.app{height:100%;display:grid;grid-template-columns:minmax(0,1fr) 320px;grid-template-rows:auto minmax(0,1fr);gap:14px 18px;padding:16px max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px))}
+header{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px 14px;align-items:end}
+.fld{display:flex;flex-direction:column;gap:3px}
+.fld span{font-size:13px;color:var(--slate);font-weight:700}
+input[type=text]{font:inherit;padding:9px 11px;border:1.5px solid var(--hair);border-radius:6px;background:var(--card);color:var(--ink)}
+#q{width:min(440px,60vw)} #room{width:150px}
+button,.btn{font:700 15px var(--f-body);padding:10px 14px;border-radius:6px;border:1.5px solid var(--hair);background:var(--card);color:var(--ink);cursor:pointer;min-height:40px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.stage{position:relative;background:var(--stage);border:1px solid var(--hair);border-radius:8px;overflow:hidden;min-height:0}
+#cloud{position:absolute;inset:0;width:100%;height:100%}
+.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:30px;color:var(--slate);font:600 clamp(20px,2.4vw,32px)/1.25 var(--f-display)}
+aside{display:flex;flex-direction:column;gap:12px;min-height:0}
+.qrbox{background:#fff;border:1px solid var(--hair);border-radius:8px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:8px}
+#qr{width:220px;height:220px}
+#qr img,#qr canvas{width:100%!important;height:100%!important}
+.link{font-size:13px;word-break:break-all;color:#4F606B;text-align:center;margin:0}
+.count{font:800 28px/1 var(--f-display)} .count small{font:400 15px var(--f-body);color:var(--slate)}
+.opts{display:flex;flex-direction:column;gap:6px;font-size:15px}
+.opts label{display:flex;gap:8px;align-items:center}
+.list{flex:1;min-height:0;overflow:auto;border:1px solid var(--hair);border-radius:8px;background:var(--card);padding:6px}
+.list h2{font:700 14px var(--f-body);margin:6px 8px;color:var(--slate)}
+.row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px}
+.row:hover{background:rgba(127,127,127,.12)}
+.row .w{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.row .n{color:var(--slate);font-variant-numeric:tabular-nums}
+.row button{padding:3px 9px;min-height:28px;font-size:13px}
+.hid .w{text-decoration:line-through;opacity:.55}
+body.present .app{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+body.present header,body.present .list,body.present .opts,body.present .count{display:none}
+body.present aside{position:fixed;right:18px;bottom:18px;z-index:5}
+body.present .qrbox{padding:10px} body.present #qr{width:180px;height:180px}
+body.present .stage{border:0;border-radius:0}
+body.present .app{padding:0}
+@media (max-width:900px){.app{grid-template-columns:1fr;grid-template-rows:auto minmax(320px,1fr) auto;overflow:auto;height:auto;min-height:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="fld"><span>Question shown to students</span><input id="q" type="text" value="One word to describe your neighborhood"></div>
+    <div class="fld"><span>Room code</span><input id="room" type="text" maxlength="30"></div>
+    <div class="fld"><span>Answers per student</span><input id="max" type="text" value="3" size="3" inputmode="numeric" style="width:70px"></div>
+    <button id="start" class="primary" type="button">Start</button>
+    <button id="newroom" type="button">New room</button>
+    <button id="present" type="button">Present full screen</button>
+  </header>
+
+  <section class="stage" aria-label="Word cloud">
+    <canvas id="cloud"></canvas>
+    <div class="empty" id="empty">Scan the QR code to add the first word.</div>
+  </section>
+
+  <aside>
+    <div class="qrbox">
+      <div id="qr" aria-label="QR code to join"></div>
+      <p class="link" id="link"></p>
+    </div>
+    <div class="count"><span id="n">0</span> <small>answers</small></div>
+    <div class="opts">
+      <label><input type="checkbox" id="plural" checked> Merge singular and plural</label>
+      <label><input type="checkbox" id="stop"> Hide filler words (the, and, of…)</label>
+    </div>
+    <div class="list"><h2>Words (click Hide to remove from the cloud)</h2><div id="rows"></div></div>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+const $ = (id) => document.getElementById(id);
+const COLORS = ["#2B8A3E","#1864AB","#C2255C","#6741D9","#BF5700","#0F766E","#12222B"];
+const STOP = new Set("a an the and or but of to in on at for with is are was were be it its this that i my me we our you your so very really just".split(" "));
+const clean = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, "").replace(/\s+/g, " ").trim();
+const rand = () => Math.random().toString(36).slice(2, 7);
+
+let room = localStorage.getItem("wc-room") || rand();
+let unsub = null, docs = [], hidden = new Set();
+
+function loadHidden() { try { hidden = new Set(JSON.parse(localStorage.getItem("wc-hidden:" + room) || "[]")); } catch (e) { hidden = new Set(); } }
+function saveHidden() { try { localStorage.setItem("wc-hidden:" + room, JSON.stringify([...hidden])); } catch (e) {} }
+
+function studentUrl() {
+  const u = new URL("index.html", location.href);
+  u.search = "";
+  u.searchParams.set("room", room);
+  const q = $("q").value.trim(); if (q) u.searchParams.set("q", q);
+  const m = parseInt($("max").value, 10); if (m && m !== 3) u.searchParams.set("max", m);
+  return u.toString();
+}
+function drawQR() {
+  const url = studentUrl();
+  $("qr").innerHTML = "";
+  new QRCode($("qr"), { text: url, width: 440, height: 440, correctLevel: QRCode.CorrectLevel.M });
+  $("link").textContent = url.replace(/^https?:\/\//, "");
+}
+
+function aggregate() {
+  const map = new Map();
+  const plural = $("plural").checked, stop = $("stop").checked;
+  docs.forEach((raw) => {
+    let k = clean(raw);
+    if (!k) return;
+    if (stop && STOP.has(k)) return;
+    if (plural && k.length > 3 && k.endsWith("s") && !k.endsWith("ss")) k = k.slice(0, -1);
+    const e = map.get(k) || { key: k, count: 0, forms: new Map() };
+    e.count++;
+    const f = clean(raw); e.forms.set(f, (e.forms.get(f) || 0) + 1);
+    map.set(k, e);
+  });
+  return [...map.values()].map((e) => {
+    let best = "", bc = -1;
+    e.forms.forEach((c, f) => { if (c > bc || (c === bc && f.length < best.length)) { best = f; bc = c; } });
+    return { key: e.key, label: best, count: e.count };
+  }).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+function renderList(items) {
+  $("rows").innerHTML = "";
+  items.forEach((it) => {
+    const r = document.createElement("div");
+    r.className = "row" + (hidden.has(it.key) ? " hid" : "");
+    r.innerHTML = '<span class="w"></span><span class="n">' + it.count + '</span><button type="button"></button>';
+    r.querySelector(".w").textContent = it.label;
+    const b = r.querySelector("button");
+    b.textContent = hidden.has(it.key) ? "Show" : "Hide";
+    b.onclick = () => { hidden.has(it.key) ? hidden.delete(it.key) : hidden.add(it.key); saveHidden(); refresh(); };
+    $("rows").appendChild(r);
+  });
+}
+
+let fontReady = false;
+function drawCloud(items) {
+  const cv = $("cloud"), box = cv.parentElement.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(box.width * dpr); cv.height = Math.round(box.height * dpr);
+  const ctx = cv.getContext("2d"); ctx.clearRect(0, 0, cv.width, cv.height);
+  const shown = items.filter((i) => !hidden.has(i.key));
+  $("empty").hidden = shown.length > 0;
+  if (!shown.length) return;
+  const max = shown[0].count, min = shown[shown.length - 1].count;
+  const base = Math.min(cv.width, cv.height);
+  const big = base * (shown.length > 40 ? 0.17 : 0.24), small = base * 0.045;
+  WordCloud(cv, {
+    list: shown.map((i) => [i.label, i.count]),
+    gridSize: Math.round(base / 90),
+    weightFactor: (s) => max === min ? big * 0.6 : small + (big - small) * Math.pow((s - min) / (max - min), 0.7),
+    fontFamily: "'Bricolage Grotesque','Segoe UI',system-ui,sans-serif",
+    fontWeight: 800,
+    color: () => COLORS[Math.floor(Math.random() * COLORS.length)],
+    backgroundColor: "transparent",
+    rotateRatio: 0.15, rotationSteps: 2, minRotation: -Math.PI / 2, maxRotation: -Math.PI / 2,
+    shuffle: false, shrinkToFit: true, drawOutOfBound: false, origin: [cv.width / 2, cv.height / 2]
+  });
+}
+
+function refresh() {
+  const items = aggregate();
+  $("n").textContent = docs.length;
+  renderList(items);
+  drawCloud(items);
+}
+
+function listen() {
+  if (unsub) unsub();
+  docs = [];
+  if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+    $("empty").textContent = "Setup needed: add your Firebase settings to firebase-config.js.";
+    return;
+  }
+  const db = getFirestore(initializeApp(firebaseConfig));
+  unsub = onSnapshot(collection(db, "rooms", room, "words"), (snap) => {
+    docs = snap.docs.map((d) => String(d.data().word || ""));
+    refresh();
+  });
+}
+
+function setRoom(r) {
+  room = (r || rand()).toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 30) || rand();
+  localStorage.setItem("wc-room", room);
+  $("room").value = room;
+  loadHidden(); drawQR(); listen(); refresh();
+}
+
+$("start").onclick = () => setRoom($("room").value);
+$("newroom").onclick = () => setRoom("");
+$("q").addEventListener("change", drawQR);
+$("max").addEventListener("change", drawQR);
+$("plural").onchange = refresh; $("stop").onchange = refresh;
+$("present").onclick = () => {
+  document.body.classList.toggle("present");
+  if (document.body.classList.contains("present") && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+  setTimeout(refresh, 150);
+};
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") { document.body.classList.remove("present"); setTimeout(refresh, 150); } });
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(refresh, 200); });
+
+(document.fonts && document.fonts.load ? document.fonts.load("800 40px 'Bricolage Grotesque'") : Promise.resolve()).finally(() => setRoom(room));
+</script>
+</body>
+</html>

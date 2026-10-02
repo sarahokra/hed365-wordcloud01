@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Join the word cloud</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:#EEF2F4; --ink:#12222B; --slate:#4F606B; --hair:#C9D3D9; --card:#FFFFFF;
+  --accent:#0F766E; --accent-ink:#FFFFFF; --err:#B42318;
+  --f-display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
+  --f-body:'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{--page:#0E1820; --ink:#E8EEF2; --slate:#A2B2BD; --hair:#2A3B45; --card:#16252F; --accent:#2DB3A5; --accent-ink:#06201D; --err:#FF8A7A}
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--page);color:var(--ink);font:400 18px/1.45 var(--f-body);display:flex;justify-content:center}
+main{width:100%;max-width:520px;padding:28px 20px 40px;display:flex;flex-direction:column;gap:20px}
+h1{font:800 clamp(30px,8vw,40px)/1.08 var(--f-display);letter-spacing:-.02em;margin:0;text-wrap:balance}
+.sub{margin:0;color:var(--slate)}
+form{display:flex;flex-direction:column;gap:12px}
+label{font-weight:700}
+input{font:inherit;font-size:20px;padding:15px 16px;border-radius:8px;border:2px solid var(--hair);background:var(--card);color:var(--ink);width:100%}
+input:focus-visible{outline:3px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+button{font:700 19px var(--f-body);padding:16px;border-radius:8px;border:0;background:var(--accent);color:var(--accent-ink);cursor:pointer;min-height:54px}
+button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+button[disabled]{opacity:.5;cursor:not-allowed}
+.left{color:var(--slate);font-size:16px;margin:0}
+.msg{margin:0;min-height:1.5em;font-weight:700}
+.msg.ok{color:var(--accent)} .msg.err{color:var(--err)}
+.sent{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:8px}
+.sent li{padding:6px 12px;border-radius:999px;background:var(--card);border:1px solid var(--hair);font-weight:700}
+.done{padding:18px;border-radius:10px;background:var(--card);border:1px solid var(--hair)}
+.done b{font:700 22px var(--f-display);display:block;margin-bottom:4px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1 id="q">One word to describe your neighborhood</h1>
+  <p class="sub" id="sub"></p>
+
+  <form id="f" autocomplete="off">
+    <label for="w" id="lab">Your word or short phrase</label>
+    <input id="w" type="text" maxlength="30" enterkeyhint="send" autocapitalize="none" spellcheck="false">
+    <button id="go" type="submit">Send</button>
+    <p class="left" id="left"></p>
+  </form>
+
+  <p class="msg" id="msg" role="status" aria-live="polite"></p>
+  <ul class="sent" id="sent" aria-label="Words you sent"></ul>
+
+  <div class="done" id="done" hidden>
+    <b>Thanks, you're in.</b>
+    Look up at the screen to see the cloud grow.
+  </div>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const room = (params.get("room") || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 30);
+const question = params.get("q");
+const MAX = Math.max(1, Math.min(10, parseInt(params.get("max") || "3", 10) || 3));
+const key = "wc-sent:" + room;
+
+if (question) $("q").textContent = question;
+document.title = question || document.title;
+
+let sent = [];
+try { sent = JSON.parse(localStorage.getItem(key) || "[]"); } catch (e) { sent = []; }
+
+function render() {
+  const left = MAX - sent.length;
+  $("sent").innerHTML = "";
+  sent.forEach((w) => { const li = document.createElement("li"); li.textContent = w; $("sent").appendChild(li); });
+  $("left").textContent = left > 0 ? (left === MAX ? "You can send up to " + MAX + "." : left + " left.") : "";
+  $("sub").textContent = MAX > 1 ? "Send up to " + MAX + " answers. Keep each one short." : "Keep it short.";
+  const full = left <= 0;
+  $("f").hidden = full;
+  $("done").hidden = !full;
+}
+
+if (!room) {
+  $("f").hidden = true;
+  $("msg").textContent = "This link is missing a room code. Scan the QR code on the screen again.";
+  $("msg").className = "msg err";
+} else if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+  $("f").hidden = true;
+  $("msg").textContent = "Setup needed: add your Firebase settings to firebase-config.js.";
+  $("msg").className = "msg err";
+} else {
+  const db = getFirestore(initializeApp(firebaseConfig));
+  render();
+  $("f").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const word = $("w").value.trim().replace(/\s+/g, " ");
+    if (!word) { $("msg").textContent = "Type a word first."; $("msg").className = "msg err"; return; }
+    if (sent.length >= MAX) return;
+    $("go").disabled = true;
+    try {
+      await addDoc(collection(db, "rooms", room, "words"), { word, createdAt: serverTimestamp() });
+      sent.push(word);
+      try { localStorage.setItem(key, JSON.stringify(sent)); } catch (e) {}
+      $("w").value = "";
+      $("msg").textContent = "Sent!";
+      $("msg").className = "msg ok";
+      render();
+      if (sent.length < MAX) $("w").focus();
+    } catch (err) {
+      $("msg").textContent = "Could not send. Check your connection and try again.";
+      $("msg").className = "msg err";
+    } finally { $("go").disabled = false; }
+  });
+}
+</script>
+</body>
+</html>
