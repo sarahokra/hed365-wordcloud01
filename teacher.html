@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600..800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --page:#EEF2F4; --ink:#12222B; --slate:#4F606B; --hair:#C9D3D9; --card:#FFFFFF; --accent:#0F766E; --accent-ink:#FFFFFF; --stage:#FFFFFF;
+  --page:#EEF2F4; --ink:#12222B; --slate:#4F606B; --hair:#C9D3D9; --card:#FFFFFF; --accent:#BF5700; --accent-ink:#FFFFFF; --stage:#FFFFFF;
   --f-display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
   --f-body:'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   box-sizing:border-box;
@@ -17,7 +17,7 @@
   padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme: dark){
-  :root{--page:#0E1820; --ink:#E8EEF2; --slate:#A2B2BD; --hair:#2A3B45; --card:#16252F; --accent:#2DB3A5; --accent-ink:#06201D; --stage:#12212B}
+  :root{--page:#0E1820; --ink:#E8EEF2; --slate:#A2B2BD; --hair:#2A3B45; --card:#16252F; --accent:#F2872F; --accent-ink:#1A0F05; --stage:#12212B}
 }
 *,*::before,*::after{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -33,6 +33,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .stage{position:relative;background:var(--stage);border:1px solid var(--hair);border-radius:8px;overflow:hidden;min-height:0}
 #cloud{position:absolute;inset:0;width:100%;height:100%}
+.empty[hidden]{display:none}
 .empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:30px;color:var(--slate);font:600 clamp(20px,2.4vw,32px)/1.25 var(--f-display)}
 aside{display:flex;flex-direction:column;gap:12px;min-height:0}
 .qrbox{background:#fff;border:1px solid var(--hair);border-radius:8px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:8px}
@@ -62,9 +63,9 @@ body.present .app{padding:0}
 <body>
 <div class="app">
   <header>
-    <div class="fld"><span>Question shown to students</span><input id="q" type="text" value="One word to describe your neighborhood"></div>
+    <div class="fld"><span>Question shown to students</span><input id="q" type="text" value="What is a neighborhood?"></div>
     <div class="fld"><span>Room code</span><input id="room" type="text" maxlength="30"></div>
-    <div class="fld"><span>Answers per student</span><input id="max" type="text" value="3" size="3" inputmode="numeric" style="width:70px"></div>
+    <div class="fld"><span>Answers per student</span><input id="max" type="text" value="1" size="3" inputmode="numeric" style="width:70px"></div>
     <button id="start" class="primary" type="button">Start</button>
     <button id="newroom" type="button">New room</button>
     <button id="present" type="button">Present full screen</button>
@@ -72,7 +73,7 @@ body.present .app{padding:0}
 
   <section class="stage" aria-label="Word cloud">
     <canvas id="cloud"></canvas>
-    <div class="empty" id="empty">Scan the QR code to add the first word.</div>
+    <div class="empty" id="empty">Scan the QR code to answer.</div>
   </section>
 
   <aside>
@@ -83,7 +84,8 @@ body.present .app{padding:0}
     <div class="count"><span id="n">0</span> <small>answers</small></div>
     <div class="opts">
       <label><input type="checkbox" id="plural" checked> Merge singular and plural</label>
-      <label><input type="checkbox" id="stop"> Hide filler words (the, and, of…)</label>
+      <label><input type="checkbox" id="split" checked> Split phrases into single words</label>
+      <label><input type="checkbox" id="stop" checked> Hide filler words (the, and, of…)</label>
     </div>
     <div class="list"><h2>Words (click Hide to remove from the cloud)</h2><div id="rows"></div></div>
   </aside>
@@ -97,8 +99,8 @@ import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/fi
 import { firebaseConfig } from "./firebase-config.js";
 
 const $ = (id) => document.getElementById(id);
-const COLORS = ["#2B8A3E","#1864AB","#C2255C","#6741D9","#BF5700","#0F766E","#12222B"];
-const STOP = new Set("a an the and or but of to in on at for with is are was were be it its this that i my me we our you your so very really just".split(" "));
+const COLORS = ["#BF5700","#333F48","#005F86","#9A4600","#D97A1E","#4A7A32","#6B4E9B"];
+const STOP = new Set("a an the and or but of to in on at for with is are was were be been being it its this that these those i my me we our you your so very really just where who which what when by as from has have had their they them there also around each other than then will would can into over about like more most some any all not no".split(" "));
 const clean = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, "").replace(/\s+/g, " ").trim();
 const rand = () => Math.random().toString(36).slice(2, 7);
 
@@ -113,7 +115,7 @@ function studentUrl() {
   u.search = "";
   u.searchParams.set("room", room);
   const q = $("q").value.trim(); if (q) u.searchParams.set("q", q);
-  const m = parseInt($("max").value, 10); if (m && m !== 3) u.searchParams.set("max", m);
+  const m = parseInt($("max").value, 10); if (m && m !== 1) u.searchParams.set("max", m);
   return u.toString();
 }
 function drawQR() {
@@ -125,16 +127,20 @@ function drawQR() {
 
 function aggregate() {
   const map = new Map();
-  const plural = $("plural").checked, stop = $("stop").checked;
+  const plural = $("plural").checked, stop = $("stop").checked, split = $("split").checked;
   docs.forEach((raw) => {
-    let k = clean(raw);
-    if (!k) return;
-    if (stop && STOP.has(k)) return;
-    if (plural && k.length > 3 && k.endsWith("s") && !k.endsWith("ss")) k = k.slice(0, -1);
-    const e = map.get(k) || { key: k, count: 0, forms: new Map() };
-    e.count++;
-    const f = clean(raw); e.forms.set(f, (e.forms.get(f) || 0) + 1);
-    map.set(k, e);
+    const full = clean(raw);
+    if (!full) return;
+    const terms = split ? [...new Set(full.split(" ").filter(Boolean))] : [full];
+    terms.forEach((t) => {
+      if (stop && STOP.has(t)) return;
+      let k = t;
+      if (plural && k.length > 3 && k.endsWith("s") && !k.endsWith("ss")) k = k.slice(0, -1);
+      const e = map.get(k) || { key: k, count: 0, forms: new Map() };
+      e.count++;
+      e.forms.set(t, (e.forms.get(t) || 0) + 1);
+      map.set(k, e);
+    });
   });
   return [...map.values()].map((e) => {
     let best = "", bc = -1;
@@ -166,11 +172,13 @@ function drawCloud(items) {
   const shown = items.filter((i) => !hidden.has(i.key));
   $("empty").hidden = shown.length > 0;
   if (!shown.length) return;
-  const max = shown[0].count, min = shown[shown.length - 1].count;
+  const adj = (i) => i.count * Math.min(1, Math.pow(12 / Math.max(1, i.label.length), 0.8));
+  const ws = shown.map(adj);
+  const max = Math.max.apply(null, ws), min = Math.min.apply(null, ws);
   const base = Math.min(cv.width, cv.height);
-  const big = base * (shown.length > 40 ? 0.17 : 0.24), small = base * 0.045;
+  const big = base * (shown.length > 40 ? 0.17 : 0.22), small = base * 0.045;
   WordCloud(cv, {
-    list: shown.map((i) => [i.label, i.count]),
+    list: shown.map((i, n) => [i.label, ws[n]]),
     gridSize: Math.round(base / 90),
     weightFactor: (s) => max === min ? big * 0.6 : small + (big - small) * Math.pow((s - min) / (max - min), 0.7),
     fontFamily: "'Bricolage Grotesque','Segoe UI',system-ui,sans-serif",
@@ -214,7 +222,7 @@ $("start").onclick = () => setRoom($("room").value);
 $("newroom").onclick = () => setRoom("");
 $("q").addEventListener("change", drawQR);
 $("max").addEventListener("change", drawQR);
-$("plural").onchange = refresh; $("stop").onchange = refresh;
+$("plural").onchange = refresh; $("stop").onchange = refresh; $("split").onchange = refresh;
 $("present").onclick = () => {
   document.body.classList.toggle("present");
   if (document.body.classList.contains("present") && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
