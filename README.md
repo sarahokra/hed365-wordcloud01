@@ -18,7 +18,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['word', 'createdAt'])
         && request.resource.data.word is string
         && request.resource.data.word.size() > 0
-        && request.resource.data.word.size() <= 40
+        && request.resource.data.word.size() <= 120
         && request.resource.data.createdAt == request.time;
       allow update, delete: if false;
     }
